@@ -10,6 +10,7 @@ from app.services.groq_service import get_groq
 
 router = APIRouter(prefix="/api/qa", tags=["Question Answer"])
 
+
 @router.post("/chat")
 def chat(
     req: ChatRequest,
@@ -38,7 +39,7 @@ VIDEO TITLE:
 {video.video_title}
 
 VIDEO TRANSCRIPT:
-{video.transcript_text[:3500]}
+{video.transcript_text[:3500] if video.transcript_text else "No transcript available"}
 
 Rules:
 - If the question is about the video, answer using the transcript.
@@ -80,8 +81,14 @@ Rules:
 
     db.add(qna)
     db.commit()
+    db.refresh(qna)
 
-    return {"answer": answer}
+    return {
+        "answer": answer,
+        "saved": True,
+        "chat_id": qna.id
+    }
+
 
 @router.get("/history/{video_id}")
 def qa_history(
@@ -89,19 +96,56 @@ def qa_history(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    video = db.query(Video).filter(
+        Video.id == video_id,
+        Video.user_id == current_user.id
+    ).first()
+
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
     history = db.query(QuestionAnswer).filter(
         QuestionAnswer.video_id == video_id,
         QuestionAnswer.user_id == current_user.id
-    ).all()
+    ).order_by(QuestionAnswer.timestamp.asc()).all()
 
     return {
         "history": [
             {
                 "id": q.id,
+                "video_id": q.video_id,
                 "question": q.question,
                 "answer": q.answer,
+                "confidence": q.confidence,
                 "timestamp": q.timestamp
             }
             for q in history
         ]
+    }
+
+
+@router.delete("/history/{video_id}")
+def clear_qa_history(
+    video_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    video = db.query(Video).filter(
+        Video.id == video_id,
+        Video.user_id == current_user.id
+    ).first()
+
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    deleted_count = db.query(QuestionAnswer).filter(
+        QuestionAnswer.video_id == video_id,
+        QuestionAnswer.user_id == current_user.id
+    ).delete()
+
+    db.commit()
+
+    return {
+        "message": "Chat history cleared successfully",
+        "deleted_count": deleted_count
     }

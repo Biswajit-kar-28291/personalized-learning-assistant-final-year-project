@@ -17,6 +17,7 @@ export default function VideoPage() {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(false)
   const chatBottomRef = useRef(null)
 
   const [showFull, setShowFull] = useState(false)
@@ -26,10 +27,53 @@ export default function VideoPage() {
   const [searchResults, setSearchResults] = useState(null)
 
   useEffect(() => {
-    api.get(`/videos/${videoId}`)
-      .then(res => setVideo(res.data))
-      .catch(() => toast.error('Failed to load video'))
-      .finally(() => setLoading(false))
+    const loadVideo = async () => {
+      try {
+        const res = await api.get(`/videos/${videoId}`)
+        setVideo(res.data)
+      } catch (err) {
+        console.log(err)
+        toast.error('Failed to load video')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadVideo()
+  }, [videoId])
+
+  useEffect(() => {
+    const loadChatHistory = async () => {
+      setHistoryLoading(true)
+
+      try {
+        const res = await api.get(`/qa/history/${videoId}`)
+
+        const oldMessages = []
+
+        res.data.history.forEach((chat) => {
+          oldMessages.push({
+            role: 'user',
+            content: chat.question
+          })
+
+          oldMessages.push({
+            role: 'assistant',
+            content: chat.answer
+          })
+        })
+
+        setMessages(oldMessages)
+      } catch (err) {
+        console.log(err)
+      } finally {
+        setHistoryLoading(false)
+      }
+    }
+
+    if (videoId) {
+      loadChatHistory()
+    }
   }, [videoId])
 
   useEffect(() => {
@@ -124,7 +168,6 @@ export default function VideoPage() {
       width: '100%',
       maxWidth: '100%'
     }}>
-      {/* Header */}
       <div style={{
         padding: '14px 24px',
         borderBottom: '1px solid var(--border)',
@@ -152,30 +195,13 @@ export default function VideoPage() {
             {video?.video_title}
           </h1>
 
-          <div style={{
-            display: 'flex',
-            gap: 12,
-            marginTop: 2,
-            flexWrap: 'wrap'
-          }}>
-            <span style={{
-              fontSize: 12,
-              color: 'var(--text3)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4
-            }}>
+          <div style={{ display: 'flex', gap: 12, marginTop: 2, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 4 }}>
               <Clock size={11} />
               {video?.upload_date ? new Date(video.upload_date).toLocaleDateString() : 'N/A'}
             </span>
 
-            <span style={{
-              fontSize: 12,
-              color: 'var(--text3)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4
-            }}>
+            <span style={{ fontSize: 12, color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 4 }}>
               <BookOpen size={11} />
               {video?.transcript_text?.split(' ')?.length?.toLocaleString() || 0} words
             </span>
@@ -187,16 +213,13 @@ export default function VideoPage() {
         </span>
       </div>
 
-      {/* Tabs */}
       <div style={{
         background: 'var(--bg2)',
         borderBottom: '1px solid var(--border)',
         padding: '0 24px',
         display: 'flex',
-        gap: 0,
         flexShrink: 0,
-        overflowX: 'auto',
-        overflowY: 'hidden'
+        overflowX: 'auto'
       }}>
         {tabs.map(({ id, label, icon: Icon }) => (
           <button
@@ -215,7 +238,6 @@ export default function VideoPage() {
               display: 'flex',
               alignItems: 'center',
               gap: 7,
-              transition: 'all var(--transition)',
               cursor: 'pointer',
               whiteSpace: 'nowrap',
               flexShrink: 0
@@ -227,22 +249,9 @@ export default function VideoPage() {
         ))}
       </div>
 
-      {/* Content */}
-      <div style={{
-        flex: 1,
-        minHeight: 0,
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column'
-      }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {tab === 'chat' && (
-          <div style={{
-            flex: 1,
-            minHeight: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden'
-          }}>
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div style={{
               flex: 1,
               minHeight: 0,
@@ -253,7 +262,13 @@ export default function VideoPage() {
               flexDirection: 'column',
               gap: 16
             }}>
-              {messages.length === 0 && (
+              {historyLoading && (
+                <div style={{ textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
+                  Loading previous chat...
+                </div>
+              )}
+
+              {!historyLoading && messages.length === 0 && (
                 <div style={{ textAlign: 'center', marginTop: 50 }} className="fade-in">
                   <div style={{
                     width: 60,
@@ -287,12 +302,7 @@ export default function VideoPage() {
                     I've read the transcript — ask any question.
                   </p>
 
-                  <div style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 8,
-                    justifyContent: 'center'
-                  }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
                     {[
                       'What are the main topics?',
                       'Summarize in 3 points',
@@ -329,9 +339,7 @@ export default function VideoPage() {
                     height: 32,
                     borderRadius: '50%',
                     flexShrink: 0,
-                    background: msg.role === 'user'
-                      ? 'var(--accent3)'
-                      : 'rgba(110,231,183,0.15)',
+                    background: msg.role === 'user' ? 'var(--accent3)' : 'rgba(110,231,183,0.15)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center'
@@ -357,25 +365,7 @@ export default function VideoPage() {
                     color: msg.role === 'user' ? '#fff' : 'var(--text)'
                   }}>
                     {msg.role === 'assistant' ? (
-                      <ReactMarkdown
-                        components={{
-                          p: ({ children }) => <p style={{ marginBottom: 8 }}>{children}</p>,
-                          ul: ({ children }) => <ul style={{ paddingLeft: 20, marginBottom: 8 }}>{children}</ul>,
-                          li: ({ children }) => <li style={{ marginBottom: 4 }}>{children}</li>,
-                          strong: ({ children }) => <strong style={{ color: 'var(--accent)' }}>{children}</strong>,
-                          code: ({ children }) => (
-                            <code style={{
-                              background: 'var(--bg3)',
-                              padding: '2px 6px',
-                              borderRadius: 4,
-                              fontSize: 12,
-                              whiteSpace: 'pre-wrap'
-                            }}>
-                              {children}
-                            </code>
-                          )
-                        }}
-                      >
+                      <ReactMarkdown>
                         {msg.content}
                       </ReactMarkdown>
                     ) : msg.content}
@@ -449,7 +439,7 @@ export default function VideoPage() {
               </div>
 
               <p style={{ fontSize: 11, color: 'var(--text3)', marginTop: 8 }}>
-                Powered by Groq LLaMA 3 · Answers based strictly on video transcript
+                Powered by Groq LLaMA 3 · Chat history saved automatically
               </p>
             </div>
           </div>
@@ -458,26 +448,9 @@ export default function VideoPage() {
         {tab === 'transcript' && (
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 24 }}>
             <div className="card fade-in">
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 12,
-                marginBottom: 20
-              }}>
-                <h3 style={{
-                  fontFamily: 'var(--font-display)',
-                  fontSize: 16,
-                  fontWeight: 700,
-                  color: 'var(--text)'
-                }}>
-                  Full Transcript
-                </h3>
-
-                <span className="badge badge-blue">
-                  {video?.transcript_text?.split(' ')?.length?.toLocaleString() || 0} words
-                </span>
-              </div>
+              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 20 }}>
+                Full Transcript
+              </h3>
 
               <div style={{
                 fontSize: 14,
@@ -490,17 +463,6 @@ export default function VideoPage() {
                 wordBreak: 'break-word'
               }}>
                 {video?.transcript_text || 'No transcript available.'}
-
-                {!showFull && (
-                  <div style={{
-                    position: 'absolute',
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    height: 80,
-                    background: 'linear-gradient(transparent, var(--bg2))'
-                  }} />
-                )}
               </div>
 
               <button
@@ -518,22 +480,10 @@ export default function VideoPage() {
 
         {tab === 'summary' && (
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 24 }}>
-            <div
-              className="card fade-in"
-              style={{
-                background: 'linear-gradient(135deg, rgba(110,231,183,0.05), rgba(96,165,250,0.05))',
-                border: '1px solid rgba(110,231,183,0.15)'
-              }}
-            >
+            <div className="card fade-in">
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
                 <Sparkles size={18} color="var(--accent)" />
-
-                <h3 style={{
-                  fontFamily: 'var(--font-display)',
-                  fontSize: 16,
-                  fontWeight: 700,
-                  color: 'var(--text)'
-                }}>
+                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
                   AI Summary
                 </h3>
               </div>
@@ -544,23 +494,8 @@ export default function VideoPage() {
                   Generating summary...
                 </div>
               ) : summary ? (
-                <div style={{
-                  fontSize: 14,
-                  lineHeight: 1.8,
-                  color: 'var(--text2)',
-                  overflowWrap: 'break-word',
-                  wordBreak: 'break-word'
-                }}>
-                  <ReactMarkdown
-                    components={{
-                      p: ({ children }) => <p style={{ marginBottom: 10 }}>{children}</p>,
-                      ul: ({ children }) => <ul style={{ paddingLeft: 20 }}>{children}</ul>,
-                      li: ({ children }) => <li style={{ marginBottom: 8, color: 'var(--text)' }}>{children}</li>,
-                      strong: ({ children }) => <strong style={{ color: 'var(--accent)' }}>{children}</strong>
-                    }}
-                  >
-                    {summary}
-                  </ReactMarkdown>
+                <div style={{ fontSize: 14, lineHeight: 1.8, color: 'var(--text2)' }}>
+                  <ReactMarkdown>{summary}</ReactMarkdown>
                 </div>
               ) : (
                 <p style={{ color: 'var(--text3)', fontSize: 14 }}>
@@ -586,11 +521,7 @@ export default function VideoPage() {
                   style={{ flex: 1, minWidth: 0 }}
                 />
 
-                <button
-                  className="btn btn-primary"
-                  onClick={handleSearch}
-                  style={{ flexShrink: 0 }}
-                >
+                <button className="btn btn-primary" onClick={handleSearch} style={{ flexShrink: 0 }}>
                   <Search size={16} /> Search
                 </button>
               </div>
@@ -606,41 +537,17 @@ export default function VideoPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {searchResults.matches.map((m, i) => (
                       <div key={i} className="card" style={{ padding: 16 }}>
-                        <div style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          marginBottom: 8
-                        }}>
-                          <span className="badge badge-blue">
-                            <Clock size={10} />
-                            {Math.floor(m.start / 60)}:
-                            {String(Math.floor(m.start % 60)).padStart(2, '0')}
-                          </span>
-                        </div>
+                        <span className="badge badge-blue">
+                          <Clock size={10} />
+                          {Math.floor(m.start / 60)}:
+                          {String(Math.floor(m.start % 60)).padStart(2, '0')}
+                        </span>
 
-                        <p style={{
-                          fontSize: 14,
-                          color: 'var(--text2)',
-                          lineHeight: 1.7,
-                          overflowWrap: 'break-word',
-                          wordBreak: 'break-word'
-                        }}>
+                        <p style={{ fontSize: 14, color: 'var(--text2)', lineHeight: 1.7, marginTop: 8 }}>
                           {m.text}
                         </p>
                       </div>
                     ))}
-                  </div>
-                ) : searchResults.snippet ? (
-                  <div className="card" style={{ padding: 20 }}>
-                    <p style={{
-                      fontSize: 14,
-                      color: 'var(--text2)',
-                      lineHeight: 1.7,
-                      overflowWrap: 'break-word',
-                      wordBreak: 'break-word'
-                    }}>
-                      ...{searchResults.snippet}...
-                    </p>
                   </div>
                 ) : (
                   <div className="card" style={{ textAlign: 'center', padding: 40 }}>
